@@ -1,1 +1,0 @@
-print("my first python script")
