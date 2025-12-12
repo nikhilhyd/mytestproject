@@ -15,30 +15,38 @@ pipeline {
         stage('Package') {
             steps {
         script {
-            // 1: Version (static or read from file)
+
             def version = "1.0.0"
 
-            // 2: Timestamp using PowerShell
             def timestamp = powershell(returnStdout: true, script: """
                 Get-Date -Format "yyyyMMdd_HHmmss"
             """).trim()
 
-            // Build filename → example: source_v1.0.0_20250212_154225.zip
-            def zipName = "source_v${version}_${timestamp}.zip"
+            def zipName = "package_v${version}_${timestamp}.zip"
 
-            echo "Packaging Windows ZIP: ${zipName}"
+            echo "Packaging: ${zipName}"
 
-            // 3: Package only specific folders on Windows
-            // NOTE: Compress-Archive cannot exclude patterns like .git,
-            // so we simply do not include .git in the folder list.
+            // ZIP only specific files/folders on Windows
             powershell """
-                \$folders = @('src', 'config', 'scripts')
-                Compress-Archive -Path \$folders -DestinationPath ${zipName} -Force
+                \$paths = @(
+                    'calculator.py',
+                    'requirements.txt',
+                    'tests'
+                )
+
+                # Filter only items that actually exist
+                \$existing = \$paths | Where-Object { Test-Path \$_ }
+
+                if (-not \$existing) {
+                    Write-Host 'ERROR: None of the specified items exist!' -ForegroundColor Red
+                    exit 1
+                }
+
+                Compress-Archive -Path \$existing -DestinationPath ${zipName} -Force
             """
 
-            // Archive the zip as Jenkins artifact
             archiveArtifacts artifacts: "${zipName}", fingerprint: true
-            }
+        }
         }
 }
 
