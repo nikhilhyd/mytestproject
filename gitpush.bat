@@ -16,9 +16,25 @@ git add .
 
 echo Committing with message: %COMMIT_MSG%
 git commit -m "%COMMIT_MSG%"
+REM Capture error level (0 = commit created, 1 = nothing to commit)
+set COMMIT_RESULT=%ERRORLEVEL%
 
-echo Pushing to origin main...
+IF %COMMIT_RESULT% NEQ 0 (
+    echo.
+    echo ==============================
+    echo No changes to commit. Skipping push.
+    echo ==============================
+    pause
+    exit /b 0
+)
+
+echo.
+echo Commit created successfully. Proceeding with push...
+
 git push origin main
 
-echo Done!
+echo.
+echo ==============================
+echo Push completed.
+echo ==============================
 pause
