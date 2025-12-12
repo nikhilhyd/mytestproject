@@ -14,7 +14,23 @@ pipeline {
 
         stage('Package') {
             steps {
-                bat 'echo Packaging'
+        script {
+
+            // 1: Version number (you can set manually or read from file)
+            def version = "1.0.0"
+
+            // 2: Timestamp
+            def timestamp = bat(script: "date +%Y%m%d_%H%M%S", returnStdout: true).trim()
+
+            // Build filename → e.g. source_v1.0.0_20250212_153455.zip
+            def zipName = "source_v${version}_${timestamp}.zip"
+
+            echo "Creating package: ${zipName}"
+
+            // 3: Package only selected folders
+        bat 'powershell Compress-Archive -Path * -DestinationPath source_code.zip'
+        archiveArtifacts artifacts: 'source_code.zip', fingerprint: true
+        }
             }
         }
 
