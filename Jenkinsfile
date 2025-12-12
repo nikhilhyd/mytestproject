@@ -15,22 +15,29 @@ pipeline {
         stage('Package') {
             steps {
         script {
-
-            // 1: Version number (you can set manually or read from file)
+            // 1: Version (static or read from file)
             def version = "1.0.0"
 
-            // 2: Timestamp
-            def timestamp = bat(script: "date +%Y%m%d_%H%M%S", returnStdout: true).trim()
+            // 2: Timestamp using PowerShell
+            def timestamp = powershell(returnStdout: true, script: """
+                Get-Date -Format "yyyyMMdd_HHmmss"
+            """).trim()
 
-            // Build filename → e.g. source_v1.0.0_20250212_153455.zip
+            // Build filename → example: source_v1.0.0_20250212_154225.zip
             def zipName = "source_v${version}_${timestamp}.zip"
 
-            echo "Creating package: ${zipName}"
+            echo "Packaging Windows ZIP: ${zipName}"
 
-            // 3: Package only selected folders
-        bat 'powershell Compress-Archive -Path * -DestinationPath source_code.zip'
-        archiveArtifacts artifacts: 'source_code.zip', fingerprint: true
-        }
+            // 3: Package only specific folders on Windows
+            // NOTE: Compress-Archive cannot exclude patterns like .git,
+            // so we simply do not include .git in the folder list.
+            powershell """
+                \$folders = @('src', 'config', 'scripts')
+                Compress-Archive -Path \$folders -DestinationPath ${zipName} -Force
+            """
+
+            // Archive the zip as Jenkins artifact
+            archiveArtifacts artifacts: "${zipName}", fingerprint: true
             }
         }
 
