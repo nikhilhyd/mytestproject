@@ -40,6 +40,7 @@ pipeline {
             archiveArtifacts artifacts: "${zipName}", fingerprint: true
             }
         }
+}
 
         stage('Build') {
             steps {
