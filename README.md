@@ -1,6 +1,7 @@
-calculator scripot.
+calculator script.
 Operations
 Add
 Subtract
 Multiplication
 Division
+
