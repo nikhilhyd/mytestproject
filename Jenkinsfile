@@ -29,6 +29,7 @@ pipeline {
             // ZIP only specific files/folders on Windows
             powershell """
                 \$paths = @(
+                    '__init__.py',
                     'calculator.py',
                     'requirements.txt',
                     'tests'
