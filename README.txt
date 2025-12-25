@@ -36,3 +36,5 @@ Jenkins.instance.getAllItems(Job.class).each { job ->
     job.nextBuildNumber = 1 // Optional: Reset the next build number to 1
     job.save()
 }
+
+
