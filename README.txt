@@ -37,6 +37,3 @@ Jenkins.instance.getAllItems(Job.class).each { job ->
     job.save()
 }
 
-
-asdasfasdf
-asdfasdfadsf
