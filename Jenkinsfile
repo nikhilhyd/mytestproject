@@ -3,64 +3,111 @@ pipeline {
 
     environment {
         PYTHONPATH = "${WORKSPACE}"
+        VERSION    = "1.0.0"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/nikhilhyd/mytestproject.git'
+                checkout scm
+                // Uses the branch Jenkins detected — not hardcoded to 'main'
+                // git branch: "${env.BRANCH_NAME}",
+                //    credentialsId: 'github-pat',
+                //    url: 'https://github.com/nikhilhyd/mytestproject.git'
             }
         }
 
-        stage('Package') {
+        stage('Install Dependencies') {
             steps {
-        script {
-
-            def version = "1.0.0"
-
-            def timestamp = powershell(returnStdout: true, script: """
-                Get-Date -Format "yyyyMMdd_HHmmss"
-            """).trim()
-
-            def zipName = "package_v${version}_${timestamp}.zip"
-
-            echo "Packaging: ${zipName}"
-
-            // ZIP only specific files/folders on Windows
-            powershell """
-                \$paths = @(
-                    '__init__.py',
-                    'calculator.py',
-                    'requirements.txt',
-                    'tests'
-                )
-
-                # Filter only items that actually exist
-                \$existing = \$paths | Where-Object { Test-Path \$_ }
-
-                if (-not \$existing) {
-                    Write-Host 'ERROR: None of the specified items exist!' -ForegroundColor Red
-                    exit 1
-                }
-
-                Compress-Archive -Path \$existing -DestinationPath ${zipName} -Force
-            """
-
-            archiveArtifacts artifacts: "${zipName}", fingerprint: true
+                bat 'pip install -r requirements.txt'
+            }
         }
-        }
-}
 
         stage('Build') {
             steps {
-                bat 'echo Building...'
+                bat 'python -m compileall .'
+                echo "Build OK on branch: ${env.BRANCH_NAME}"
             }
         }
 
         stage('Unit Test') {
+            // Runs on every branch, every commit
             steps {
-                bat 'pytest --maxfail=1 --disable-warnings -q --html=reports/pytest-report.html --self-contained-html --cov=calculator --cov-report=xml:reports/coverage.xml --cov-report=html:reports/coverage-html'
+                bat 'if not exist reports mkdir reports'
+                bat '''pytest tests/ --maxfail=1 --disable-warnings -q ^
+                    --html=reports/pytest-report.html ^
+                    --self-contained-html ^
+                    --cov=calculator ^
+                    --cov-report=xml:reports/coverage.xml ^
+                    --cov-report=html:reports/coverage-html'''
             }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'reports/*.xml'
+                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Integration Test') {
+            // Skipped on feature branches — only develop and main
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
+                }
+            }
+            steps {
+                bat 'pytest tests/integration/ --junitxml=reports/integration.xml -v'
+            }
+        }
+
+        stage('PR Quality Gate') {
+            // Only triggers when a Pull Request is opened or updated
+            when { changeRequest() }
+            steps {
+                script {
+                    def failCount = currentBuild.testResultAction?.failCount ?: 0
+                    if (failCount > 0) {
+                        error("PR BLOCKED: ${failCount} test(s) are failing. Fix before merging.")
+                    }
+                    echo "Quality gate PASSED — this PR is safe to merge"
+                }
+            }
+        }
+
+        stage('Package') {
+            // Only package production-ready code on main
+            when { branch 'main' }
+            steps {
+                script {
+                    def timestamp = powershell(
+                        returnStdout: true,
+                        script: 'Get-Date -Format "yyyyMMdd_HHmmss"'
+                    ).trim()
+                    def zipName = "package_v${env.VERSION}_${env.BUILD_NUMBER}_${timestamp}.zip"
+                    echo "Packaging: ${zipName}"
+                    powershell """
+                        \$paths = @('__init__.py', 'calculator.py', 'requirements.txt')
+                        \$existing = \$paths | Where-Object { Test-Path \$_ }
+                        if (-not \$existing) { Write-Error 'No files found!'; exit 1 }
+                        Compress-Archive -Path \$existing -DestinationPath ${zipName} -Force
+                    """
+                    archiveArtifacts artifacts: "${zipName}", fingerprint: true
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline PASSED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
+        }
+        failure {
+            echo "Pipeline FAILED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
+        }
+        always {
+            cleanWs()
         }
     }
 }

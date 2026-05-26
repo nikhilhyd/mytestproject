@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 this is branch1 file...
+=======
+this is branch1 commit
+>>>>>>> 285622cbe01a6567fe1a8ad933e6101bc826f746
