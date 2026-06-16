@@ -102,6 +102,7 @@ pipeline {
     post {
         success {
             echo "Pipeline PASSED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
+            build job: 'freestyle1', wait: false
         }
         failure {
             echo "Pipeline FAILED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
