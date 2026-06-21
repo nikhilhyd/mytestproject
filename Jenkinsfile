@@ -6,7 +6,7 @@ pipeline {
 
     // Parameters block defines the UI choices for the user
     parameters {
-        choice(name: 'AGENT_MACHINE', choices: ['any', 'windows-node', 'linux-node'], description: 'Select the target machine/node for this build')
+        choice(name: 'AGENT_MACHINE', choices: ['any', 'built-in'], description: 'Select the target machine/node for this build')
         string(name: 'FIRMWARE_VERSION', defaultValue: '1.0.0', description: 'Enter the firmware version number')
     }
 
