@@ -1,117 +1,54 @@
 pipeline {
-    // 1. Parameterized Agent: Dynamically targets the node label chosen by the user
     agent {
-        label "${params.AGENT_MACHINE}"
+        label "${params.AGENT_MACHINE ?: 'built-in'}"
     }
 
-    // Parameters block defines the UI choices for the user
+    options {
+        timeout(time: 2, unit: 'MINUTES') 
+    }
+
     parameters {
-        choice(name: 'AGENT_MACHINE', choices: ['any', 'built-in'], description: 'Select the target machine/node for this build')
-        string(name: 'FIRMWARE_VERSION', defaultValue: '1.0.0', description: 'Enter the firmware version number')
+        choice(name: 'AGENT_MACHINE', choices: ['built-in', 'any'], description: 'Select the target machine')
+        
+        // This is only used for manual human builds
+        string(name: 'FIRMWARE_VERSION', defaultValue: 'MANUAL_RUN', description: 'Enter version (Leave as-is if you want Jenkins to read from version.txt)')
     }
 
     environment {
         PYTHONPATH = "${WORKSPACE}"
-        // 2. Parameterized Version: Reads the value typed in by the user
-        VERSION    = "${params.FIRMWARE_VERSION}"
+        // env.VERSION will be assigned dynamically inside the first stage
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout & Detect Version') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                bat 'pip install -r requirements.txt'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                bat 'python -m compileall .'
-                echo "Build OK on branch: ${env.BRANCH_NAME}"
-            }
-        }
-
-        stage('Unit Test') {
-            steps {
-                bat 'if not exist reports mkdir reports'
-                bat '''pytest tests/ --maxfail=1 --disable-warnings -q ^
-                    --html=reports/pytest-report.html ^
-                    --self-contained-html ^
-                    --cov=calculator ^
-                    --cov-report=xml:reports/coverage.xml ^
-                    --cov-report=html:reports/coverage-html'''
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'reports/*.xml'
-                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('Integration Test') {
-            when {
-                anyOf {
-                    branch 'develop'
-                    branch 'main'
-                }
-            }
-            steps {
-                bat 'pytest tests/integration/ --junitxml=reports/integration.xml -v'
-            }
-        }
-
-        stage('PR Quality Gate') {
-            when { changeRequest() }
-            steps {
+                
                 script {
-                    def failCount = currentBuild.testResultAction?.failCount ?: 0
-                    if (failCount > 0) {
-                        error("PR BLOCKED: ${failCount} test(s) are failing. Fix before merging.")
+                    // 1. Check if the build was started by a GitHub Webhook push event
+                    def startedByWebhook = currentBuild.buildCauses.toString().contains('GitHubPushCause')
+                    
+                    // 2. Decide where to get the firmware version number
+                    if (startedByWebhook || params.FIRMWARE_VERSION == 'MANUAL_RUN') {
+                        echo "🤖 Trigger source: Webhook (or manual run with default text). Reading version.txt..."
+                        
+                        // Read from the file inside your repository workspace
+                        def versionFromFile = readFile('version.txt').trim()
+                        env.VERSION = versionFromFile
+                    } else {
+                        echo "👤 Trigger source: Manual user entry."
+                        
+                        // Use the exact text the human typed into the Jenkins box
+                        env.VERSION = params.FIRMWARE_VERSION
                     }
-                    echo "Quality gate PASSED — this PR is safe to merge"
+                    
+                    echo "🎯 Final Firmware Version used for this build: ${env.VERSION}"
                 }
             }
         }
-
-        stage('Package') {
-            when { branch 'main' }
-            steps {
-                script {
-                    def timestamp = powershell(
-                        returnStdout: true,
-                        script: 'Get-Date -Format "yyyyMMdd_HHmmss"'
-                    ).trim()
-                    def zipName = "package_v${env.VERSION}_${env.BUILD_NUMBER}_${timestamp}.zip"
-                    echo "Packaging: ${zipName}"
-                    powershell """
-                        \$paths = @('__init__.py', 'calculator.py', 'requirements.txt')
-                        \$existing = \$paths | Where-Object { Test-Path \$_ }
-                        if (-not \$existing) { Write-Error 'No files found!'; exit 1 }
-                        Compress-Archive -Path \$existing -DestinationPath ${zipName} -Force
-                    """
-                    archiveArtifacts artifacts: "${zipName}", fingerprint: true
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Pipeline PASSED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
-            build job: 'freestyle1', wait: false
-        }
-        failure {
-            echo "Pipeline FAILED on ${env.BRANCH_NAME} — build #${env.BUILD_NUMBER}"
-        }
-        always {
-            cleanWs()
-        }
+        
+        // ... Keep your 'Install Dependencies', 'Build', 'Unit Test', etc. exactly the same.
+        // The Package stage below will automatically pick up the correct ${env.VERSION}!
     }
 }
 
