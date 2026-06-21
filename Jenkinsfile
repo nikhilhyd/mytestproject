@@ -1,19 +1,25 @@
 pipeline {
-    agent any
+    // 1. Parameterized Agent: Dynamically targets the node label chosen by the user
+    agent {
+        label "${params.AGENT_MACHINE}"
+    }
+
+    // Parameters block defines the UI choices for the user
+    parameters {
+        choice(name: 'AGENT_MACHINE', choices: ['any', 'windows-node', 'linux-node'], description: 'Select the target machine/node for this build')
+        string(name: 'FIRMWARE_VERSION', defaultValue: '1.0.0', description: 'Enter the firmware version number')
+    }
 
     environment {
         PYTHONPATH = "${WORKSPACE}"
-        VERSION    = "1.0.0"
+        // 2. Parameterized Version: Reads the value typed in by the user
+        VERSION    = "${params.FIRMWARE_VERSION}"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                // Uses the branch Jenkins detected — not hardcoded to 'main'
-                // git branch: "${env.BRANCH_NAME}",
-                //    credentialsId: 'github-pat',
-                //    url: 'https://github.com/nikhilhyd/mytestproject.git'
             }
         }
 
@@ -31,7 +37,6 @@ pipeline {
         }
 
         stage('Unit Test') {
-            // Runs on every branch, every commit
             steps {
                 bat 'if not exist reports mkdir reports'
                 bat '''pytest tests/ --maxfail=1 --disable-warnings -q ^
@@ -50,7 +55,6 @@ pipeline {
         }
 
         stage('Integration Test') {
-            // Skipped on feature branches — only develop and main
             when {
                 anyOf {
                     branch 'develop'
@@ -63,7 +67,6 @@ pipeline {
         }
 
         stage('PR Quality Gate') {
-            // Only triggers when a Pull Request is opened or updated
             when { changeRequest() }
             steps {
                 script {
@@ -77,7 +80,6 @@ pipeline {
         }
 
         stage('Package') {
-            // Only package production-ready code on main
             when { branch 'main' }
             steps {
                 script {
@@ -112,3 +114,4 @@ pipeline {
         }
     }
 }
+
